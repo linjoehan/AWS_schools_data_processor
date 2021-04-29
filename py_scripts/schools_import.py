@@ -1,6 +1,5 @@
 import sys
-sys.path.append("./py_scripts/libs")
-#import psycopg2
+import psycopg2
 import openpyxl
 import tempfile
 import urllib
@@ -10,7 +9,7 @@ import io
 
 def convert_data_to_values(value):
   if isinstance(value,str):
-    if value == '':
+    if value == '' or value == 'null' or value == 'NULL':
       return "null"
     return "'" + value.replace("'","''") + "'"
   elif isinstance(value,type(None)):
@@ -42,21 +41,53 @@ def lambda_handler(event,context):
   #load binary data into workbook object
   try:
     workbook_object = openpyxl.load_workbook(io.BytesIO(bindata))
-    #sheet_object = workbook_object.active
-    #print(sheet_object.max_row,sheet_object.max_column)
+    sheet_object = workbook_object.active
   except Exception as e:
     print(e)
     raise e
   
-  #Write data from xlsx to a temporary csv file for faster import using copy in database
-  
   #import to database
+  value_string = ""
+  for row_num in range(sheet_object.max_row):
+    if row_num != 0:
+      if row_num!= 1:
+        value_string += ","
+      value_string += "("
+      for col_num in range(sheet_object.max_column):
+        if col_num!=0:
+          value_string += ","
+        value_string += convert_data_to_values(sheet_object.cell(row=row_num+1,column=col_num+1).value)
+      value_string += ")"
+  value_string = value_string.encode("ascii","ignore").decode()
+  
+  #prepare sql
+  sql = load_sql_from_file('./sql_scripts/import_schools.sql')
+  sql = sql.replace("%value_string%",value_string)
+  
+  #connect to database
+  try:
+    conn = psycopg2.connect(database="schools_data")
+  except:
+    print("Unable to connect to database")
+    raise
+  cur = conn.cursor()
+  
+  #run query
+  try:
+    cur.execute(sql)
+  except Exception as err:
+    print("Could not Exceute sql query:",sql)
+    print_psycopg2_exception(err)
+    raise
+  cur.close()
+  conn.commit()
+  conn.close()
   
   return 'Success!'
 
 def local_tester():
-  #conn = psycopg2.connect(database="schools_data")
-  xlsxfile = "./data/Western Cape.xlsx"
+  
+  xlsxfile = "./data/Eastern Cape.xlsx"
   workbook_object = openpyxl.load_workbook(xlsxfile)
   sheet_object = workbook_object.active
   
@@ -78,6 +109,27 @@ def local_tester():
   outfile = open("./data/insert_test.sql","w")
   outfile.write(sql)
   outfile.close()
+  
+  #connect to database
+  try:
+    conn = psycopg2.connect(database="schools_data")
+  except:
+    print("Unable to connect to database")
+    raise
+  cur = conn.cursor()
+  
+  #run query
+  try:
+    cur.execute(sql)
+  except Exception as err:
+    print("Could not Exceute sql query:",sql)
+    print_psycopg2_exception(err)
+    raise
+  cur.close()
+  conn.commit()
+  conn.close()
   return
 
+"""
 local_tester()
+"""
