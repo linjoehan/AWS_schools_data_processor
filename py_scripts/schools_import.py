@@ -87,7 +87,7 @@ def lambda_handler(event,context):
 
 def local_tester():
   
-  xlsxfile = "./data/Eastern Cape.xlsx"
+  xlsxfile = "./data/Western Cape.xlsx"
   workbook_object = openpyxl.load_workbook(xlsxfile)
   sheet_object = workbook_object.active
   
